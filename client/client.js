@@ -11,6 +11,87 @@ function outputMessage(message) {
 	console.log('[!] ' + message);
 }
 
+function getRegisteredObject(objectName) {
+	if (registeredObjects[objectName]) {
+		return registeredObjects[objectName];
+	} else {
+		outputMessage('Obje kayıtlı değil: ' + objectName);
+		return null;
+	}
+}
+
+function removeObjectFromPlayer(player) {
+	try {
+		var object = currentExistingObjects[player.id];
+		if (object && natives.doesEntityExist(object)) {
+			natives.detachEntity(object, true, true);
+			natives.deleteObject(object);
+			currentExistingObjects[player.id] = null;
+			natives.setPedCurrentWeaponVisible(player.scriptID, true, true, true, true);
+		}
+	} catch(e) {
+		outputMessage(e.message);
+	}
+}
+
+function attachObjectToPlayer(player, boneId, objectName, positionX, positionY, positionZ, rotationX, rotationY, rotationZ) {
+	try {
+		removeObjectFromPlayer(player);
+
+		var hashOfProp = natives.getHashKey(objectName);
+
+		natives.requestModel(hashOfProp);
+		const modelLoadInterval = alt.setInterval(() => {
+			if (natives.hasModelLoaded(hashOfProp)) {
+				alt.clearInterval(modelLoadInterval)
+			}
+		}, 100);
+		
+		var newObject = natives.createObject(hashOfProp, player.pos.x, player.pos.y, player.pos.z, true, true, true);
+		natives.setModelAsNoLongerNeeded(hashOfProp);
+
+		var boneIndex = natives.getPedBoneIndex(player.scriptID, boneId);
+
+		if (newObject) {
+			natives.setPedCurrentWeaponVisible(player.scriptID, false, true, true, true);
+
+			natives.attachEntityToEntity(newObject, player.scriptID, boneIndex, positionX, positionY, positionZ, rotationX, rotationY, rotationZ, false, false, false, false, 1, true);
+
+			currentExistingObjects[player.id] = newObject;
+		} else {
+			outputMessage('Obje belirlenemedi: ' + objectName);
+		}
+	} catch(e) {
+		outputMessage(e.message);
+	}
+}
+
+function attachRegisteredObjectToPlayer(player, objectData) {
+	if (objectData) {
+		attachObjectToPlayer(player, objectData.boneId, objectData.objectName, objectData.position.x, objectData.position.y, objectData.position.z, objectData.rotation.x, objectData.rotation.y, objectData.rotation.z);
+	}
+}
+
+function attachRegisteredObjectToLocalPlayerSynced(objectName, objectData) {
+	if (objectData) {
+		attachRegisteredObjectToPlayer(alt.Player.local, objectData);
+		alt.emitServer('objectAttacher:attachedObject', objectName);
+	}
+}
+
+function detachObjectFromLocalPlayerSynced() {
+	removeObjectFromPlayer(alt.Player.local);
+	alt.emitServer('objectAttacher:detachedObject');
+}
+
+function resetAnimationOnLocalPlayer() {
+    try {
+        natives.clearPedTasks(alt.Player.local.scriptID);
+    } catch(e) {
+        outputMessage(e.message);
+    }
+}
+
 function playAnimationOnLocalPlayer(animDictionary, animationName, animationFlag) {
 	try{
 		if (natives.doesAnimDictExist(animDictionary)) {
@@ -32,44 +113,44 @@ function playAnimationOnLocalPlayer(animDictionary, animationName, animationFlag
 }
 
 function playAnimationSequenceOnLocalPlayer(enterAnimation, exitAnimation, sequenceFinishedCallback) {
-	let enterAnimationIsSet = enterAnimation && enterAnimation.dict && enterAnimation.name;
-	let exitAnimationIsSet = exitAnimation && exitAnimation.dict && exitAnimation.name;
+    let enterAnimationIsSet = enterAnimation && enterAnimation.dict && enterAnimation.name;
+    let exitAnimationIsSet = exitAnimation && exitAnimation.dict && exitAnimation.name;
 
-	let firstAnimation = null;
-	let secondAnimation = null;
+    let firstAnimation = null;
+    let secondAnimation = null; 
 
-	if (enterAnimationIsSet) {
-		firstAnimation = enterAnimation;
-		if (exitAnimationIsSet) {
-			secondAnimation = exitAnimation;
-		}
-	} else if {
-		firstAnimation = exitAnimation;
-	}
-	
-	if (firstAnimation) {
-		resetAnimationOnLocalPlayer();
+    if (enterAnimationIsSet) {
+        firstAnimation = enterAnimation;
+        if (exitAnimationIsSet) {
+            secondAnimation = exitAnimation; 
+        }
+    } else if(exitAnimationIsSet) {
+        firstAnimation = exitAnimation;
+    }
 
-		playAnimationOnLocalPlayer(firstAnimation.dict, firstAnimation.name, firstAnimation.flag);
+    if (firstAnimation) {
+        resetAnimationOnLocalPlayer();
 
-		if (firstAnimation.durationMs && firstAnimation.durationMs > 0) {
-			alt.setTimeout(() => {
-				if (secondAnimation) {
-					playAnimationOnLocalPlayer(secondAnimation.dict, secondAnimation.name, secondAnimation.flag);
+        playAnimationOnLocalPlayer(firstAnimation.dict, firstAnimation.name, firstAnimation.flag);
 
-					if (secondAnimation.durationMs && secondAnimation.durationMs > 0) {
-						alt.setTimeout(() => {
-							resetAnimationOnLocalPlayer();
-							sequenceFinishedCallback()
-						}, secondAnimation.durationMs)
-					}
-				} else {
-					resetAnimationOnLocalPlayer();
-					sequenceFinishedCallback();
-				}
-			}, firstAnimation.durationMs)
-		}
-	}
+        if (firstAnimation.durationMs && firstAnimation.durationMs > 0) {
+            alt.setTimeout(() => {
+                if (secondAnimation) {
+                    playAnimationOnLocalPlayer(secondAnimation.dict, secondAnimation.name, secondAnimation.flag);
+
+                    if (secondAnimation.durationMs && secondAnimation.durationMs > 0) {
+                        alt.setTimeout(() => {
+                            resetAnimationOnLocalPlayer();
+                            sequenceFinishedCallback()
+                        }, secondAnimation.durationMs)
+                    }
+                } else {
+                    resetAnimationOnLocalPlayer();
+                    sequenceFinishedCallback();
+                }
+            }, firstAnimation.durationMs)
+        }
+    }
 }
 
 alt.setInterval(() => {
@@ -102,7 +183,7 @@ alt.setInterval(() => {
 		outputMessage(e.message);
 	}
 }, CHECK_INTERVAL);
-/*
+
 function getRegisteredObject(objectName) {
 	if (registeredObjects[objectName]) {
 		return registeredObjects[objectName];
@@ -110,9 +191,9 @@ function getRegisteredObject(objectName) {
 		outputMessage('Obje kayıt edilmemiş: ' + objectName);
 		return null;
 	}
-} */
+}
 
-/* function removeObjectFromPlayer(player) {
+function removeObjectFromPlayer(player) {
 	try {
 		// Kişinin elindeki silahı gizler
 		var object = currentExistingObjects[player.id];
@@ -126,7 +207,7 @@ function getRegisteredObject(objectName) {
 	} catch(e) {
 		outputMessage(e.message);
 	}
-} */
+}
 
 
 
